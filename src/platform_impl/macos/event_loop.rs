@@ -161,6 +161,11 @@ impl ActiveEventLoop {
         NSWindow::setAllowsAutomaticWindowTabbing(enabled, self.mtm)
     }
 
+    pub(crate) fn reply_to_terminate_request(&self, should_terminate: bool) {
+        NSApplication::sharedApplication(self.mtm)
+            .replyToApplicationShouldTerminate(should_terminate)
+    }
+
     pub(crate) fn allows_automatic_window_tabbing(&self) -> bool {
         NSWindow::allowsAutomaticWindowTabbing(self.mtm)
     }
@@ -205,11 +210,17 @@ pub(crate) struct PlatformSpecificEventLoopAttributes {
     pub(crate) activation_policy: Option<ActivationPolicy>,
     pub(crate) default_menu: bool,
     pub(crate) activate_ignoring_other_apps: bool,
+    pub(crate) terminate_requests: bool,
 }
 
 impl Default for PlatformSpecificEventLoopAttributes {
     fn default() -> Self {
-        Self { activation_policy: None, default_menu: true, activate_ignoring_other_apps: true }
+        Self {
+            activation_policy: None,
+            default_menu: true,
+            activate_ignoring_other_apps: true,
+            terminate_requests: false,
+        }
     }
 }
 
@@ -234,6 +245,7 @@ impl<T> EventLoop<T> {
             activation_policy,
             attributes.default_menu,
             attributes.activate_ignoring_other_apps,
+            attributes.terminate_requests,
         );
 
         autoreleasepool(|_| {

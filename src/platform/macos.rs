@@ -433,6 +433,19 @@ pub trait EventLoopBuilderExtMacOS {
     ///
     /// The default behavior is to ignore other applications and activate when launched.
     fn with_activate_ignoring_other_apps(&mut self, ignore: bool) -> &mut Self;
+
+    /// Route `applicationShouldTerminate:` (Command+Q, Dock ▸ Quit, logout, any
+    /// `terminate:`) to [`ApplicationHandler::terminate_requested`] instead of quitting at once.
+    ///
+    /// The handler must answer every request with
+    /// [`ActiveEventLoopExtMacOS::reply_to_terminate_request`]. While it has not, AppKit
+    /// waits; at logout the system only waits a limited time before it reports that the
+    /// application is blocking logout.
+    ///
+    /// Disabled by default.
+    ///
+    /// [`ApplicationHandler::terminate_requested`]: crate::application::ApplicationHandler::terminate_requested
+    fn with_terminate_requests(&mut self, enable: bool) -> &mut Self;
 }
 
 impl<T> EventLoopBuilderExtMacOS for EventLoopBuilder<T> {
@@ -451,6 +464,12 @@ impl<T> EventLoopBuilderExtMacOS for EventLoopBuilder<T> {
     #[inline]
     fn with_activate_ignoring_other_apps(&mut self, ignore: bool) -> &mut Self {
         self.platform_specific.activate_ignoring_other_apps = ignore;
+        self
+    }
+
+    #[inline]
+    fn with_terminate_requests(&mut self, enable: bool) -> &mut Self {
+        self.platform_specific.terminate_requests = enable;
         self
     }
 }
@@ -490,6 +509,11 @@ pub trait ActiveEventLoopExtMacOS {
     fn set_allows_automatic_window_tabbing(&self, enabled: bool);
     /// Returns whether the system can automatically organize windows into tabs.
     fn allows_automatic_window_tabbing(&self) -> bool;
+    /// Answer a pending [`ApplicationHandler::terminate_requested`]: `true` quits the
+    /// application, `false` cancels the quit.
+    ///
+    /// [`ApplicationHandler::terminate_requested`]: crate::application::ApplicationHandler::terminate_requested
+    fn reply_to_terminate_request(&self, should_terminate: bool);
 }
 
 impl ActiveEventLoopExtMacOS for ActiveEventLoop {
@@ -507,6 +531,10 @@ impl ActiveEventLoopExtMacOS for ActiveEventLoop {
 
     fn allows_automatic_window_tabbing(&self) -> bool {
         self.p.allows_automatic_window_tabbing()
+    }
+
+    fn reply_to_terminate_request(&self, should_terminate: bool) {
+        self.p.reply_to_terminate_request(should_terminate);
     }
 }
 

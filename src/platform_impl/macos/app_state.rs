@@ -7,7 +7,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{class, define_class, msg_send, sel, ClassType, DefinedClass, MainThreadOnly, Message};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
+    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate,
+    NSApplicationTerminateReply, NSRunningApplication,
 };
 use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
 
@@ -24,6 +25,8 @@ pub(super) struct AppState {
     activation_policy: Option<NSApplicationActivationPolicy>,
     default_menu: bool,
     activate_ignoring_other_apps: bool,
+    /// Whether `applicationShouldTerminate:` is answered by the application.
+    terminate_requests: bool,
     run_loop: RunLoop,
     event_handler: EventHandler,
     stop_on_launch: Cell<bool>,
@@ -98,6 +101,11 @@ define_class!(
             }
         }
 
+        #[unsafe(method(applicationShouldTerminate:))]
+        fn app_should_terminate(&self, _sender: &NSApplication) -> NSApplicationTerminateReply {
+            self.should_terminate()
+        }
+
         #[unsafe(method(applicationWillTerminate:))]
         fn app_will_terminate(&self, notification: &NSNotification) {
             self.will_terminate(notification)
@@ -111,11 +119,13 @@ impl ApplicationDelegate {
         activation_policy: Option<NSApplicationActivationPolicy>,
         default_menu: bool,
         activate_ignoring_other_apps: bool,
+        terminate_requests: bool,
     ) -> Retained<Self> {
         let this = mtm.alloc().set_ivars(AppState {
             activation_policy,
             default_menu,
             activate_ignoring_other_apps,
+            terminate_requests,
             run_loop: RunLoop::main(mtm),
             event_handler: EventHandler::new(),
             stop_on_launch: Cell::new(false),
@@ -193,6 +203,21 @@ impl ApplicationDelegate {
             let app = NSApplication::sharedApplication(mtm);
             stop_app_immediately(&app);
         }
+    }
+
+    fn should_terminate(&self) -> NSApplicationTerminateReply {
+        trace_scope!("applicationShouldTerminate:");
+        // Without an opted-in, running handler nobody would ever reply, so keep AppKit's
+        // default of terminating at once.
+        if !self.ivars().terminate_requests || !self.is_running() {
+            return NSApplicationTerminateReply::TerminateNow;
+        }
+        self.handle_event(Event::PlatformSpecific(PlatformSpecific::MacOS(
+            MacOS::TerminateRequested,
+        )));
+        // The handler answers through `replyToApplicationShouldTerminate:`; AppKit keeps the
+        // run loop going in the modal-panel mode meanwhile.
+        NSApplicationTerminateReply::TerminateLater
     }
 
     fn will_terminate(&self, _notification: &NSNotification) {

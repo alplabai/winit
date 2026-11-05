@@ -231,6 +231,20 @@ pub trait ApplicationHandler<T: 'static = ()> {
         let _ = event_loop;
         let _ = url;
     }
+
+    /// Emitted when the application is asked to quit (Command+Q, Dock ▸ Quit, logout,
+    /// `-[NSApplication terminate:]`).
+    ///
+    /// Only emitted on macOS when the event loop was built with
+    /// [`EventLoopBuilderExtMacOS::with_terminate_requests(true)`]. The application must
+    /// then answer with [`ActiveEventLoopExtMacOS::reply_to_terminate_request`]; until it
+    /// does, AppKit waits (the event loop keeps running).
+    ///
+    /// [`EventLoopBuilderExtMacOS::with_terminate_requests(true)`]: crate::platform::macos::EventLoopBuilderExtMacOS::with_terminate_requests
+    /// [`ActiveEventLoopExtMacOS::reply_to_terminate_request`]: crate::platform::macos::ActiveEventLoopExtMacOS::reply_to_terminate_request
+    fn terminate_requested(&mut self, event_loop: &ActiveEventLoop) {
+        let _ = event_loop;
+    }
 }
 
 impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for &mut A {
@@ -288,6 +302,16 @@ impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for &m
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         (**self).memory_warning(event_loop);
     }
+
+    #[inline]
+    fn received_url(&mut self, event_loop: &ActiveEventLoop, url: String) {
+        (**self).received_url(event_loop, url);
+    }
+
+    #[inline]
+    fn terminate_requested(&mut self, event_loop: &ActiveEventLoop) {
+        (**self).terminate_requested(event_loop);
+    }
 }
 
 impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for Box<A> {
@@ -344,5 +368,15 @@ impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for Bo
     #[inline]
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         (**self).memory_warning(event_loop);
+    }
+
+    #[inline]
+    fn received_url(&mut self, event_loop: &ActiveEventLoop, url: String) {
+        (**self).received_url(event_loop, url);
+    }
+
+    #[inline]
+    fn terminate_requested(&mut self, event_loop: &ActiveEventLoop) {
+        (**self).terminate_requested(event_loop);
     }
 }

@@ -650,5 +650,8 @@ pub(crate) fn dispatch_event_for_app<T: 'static, A: ApplicationHandler<T>>(
         Event::PlatformSpecific(event::PlatformSpecific::MacOS(event::MacOS::ReceivedUrl(url))) => {
             app.received_url(event_loop, url)
         },
+        Event::PlatformSpecific(event::PlatformSpecific::MacOS(
+            event::MacOS::TerminateRequested,
+        )) => app.terminate_requested(event_loop),
     }
 }

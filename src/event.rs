@@ -118,6 +118,9 @@ pub enum PlatformSpecific {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MacOS {
     ReceivedUrl(String),
+    /// The application was asked to quit; see
+    /// [`ApplicationHandler::terminate_requested`](crate::application::ApplicationHandler::terminate_requested).
+    TerminateRequested,
 }
 
 impl<T> Event<T> {
