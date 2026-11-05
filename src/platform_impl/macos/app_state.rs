@@ -212,7 +212,10 @@ impl ApplicationDelegate {
         if !self.ivars().terminate_requests || !self.is_running() {
             return NSApplicationTerminateReply::TerminateNow;
         }
-        self.handle_event(Event::PlatformSpecific(PlatformSpecific::MacOS(
+        // `terminate:` can arrive while the handler runs (a nested run loop, an Apple Event
+        // delivered mid-callback); handling it directly would re-enter and panic, which aborts
+        // the process. Queue it in that case; the reply is asynchronous anyway.
+        self.maybe_queue_event(Event::PlatformSpecific(PlatformSpecific::MacOS(
             MacOS::TerminateRequested,
         )));
         // The handler answers through `replyToApplicationShouldTerminate:`; AppKit keeps the
