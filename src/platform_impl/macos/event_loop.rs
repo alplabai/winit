@@ -162,8 +162,15 @@ impl ActiveEventLoop {
     }
 
     pub(crate) fn reply_to_terminate_request(&self, should_terminate: bool) {
-        NSApplication::sharedApplication(self.mtm)
-            .replyToApplicationShouldTerminate(should_terminate)
+        // Replying `YES` runs `applicationWillTerminate:` synchronously, which dispatches
+        // `LoopExiting`; called from inside the event handler that would re-enter it and panic.
+        // Defer the reply to the main queue, which AppKit drains in the modal-panel run loop
+        // mode it waits in.
+        dispatch2::DispatchQueue::main().exec_async(move || {
+            let mtm = MainThreadMarker::new().expect("main queue runs on the main thread");
+            NSApplication::sharedApplication(mtm)
+                .replyToApplicationShouldTerminate(should_terminate);
+        });
     }
 
     pub(crate) fn allows_automatic_window_tabbing(&self) -> bool {
