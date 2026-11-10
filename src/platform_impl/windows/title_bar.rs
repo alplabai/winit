@@ -4,17 +4,19 @@ use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::UI::WindowsAndMessaging::{HTTOP, HTTOPLEFT, HTTOPRIGHT};
 
 /// Client-rect top after `DefWindowProc` for `WM_NCCALCSIZE`: the caption is dropped. A maximised
-/// window sits `frame` px above the monitor, so its client area starts `frame` px lower.
-pub(super) fn nccalc_top(saved_top: i32, maximized: bool, frame: i32) -> i32 {
+/// window sits `inset` px beyond the monitor (the side inset the system applied), so its client
+/// area starts `inset` px lower.
+pub(super) fn nccalc_top(saved_top: i32, maximized: bool, inset: i32) -> i32 {
     if maximized {
-        saved_top + frame
+        saved_top + inset
     } else {
         saved_top
     }
 }
 
 /// Hit-test code for the resize band along the top edge of the client area, which no longer has
-/// a non-client border to resize from. `x`/`y` are client coordinates.
+/// a non-client border to resize from. `x`/`y` are client coordinates. The left corner wins when
+/// the window is narrower than two frames.
 pub(super) fn top_band_hit(x: i32, y: i32, width: i32, frame: i32) -> Option<isize> {
     if !(0..frame).contains(&y) {
         return None;
@@ -39,29 +41,51 @@ pub(super) fn zero_top_margin(original: RECT, mut adjusted: RECT) -> RECT {
 mod tests {
     use super::*;
 
+    const TOP: isize = HTTOP as isize;
+    const LEFT: isize = HTTOPLEFT as isize;
+    const RIGHT: isize = HTTOPRIGHT as isize;
+
     #[test]
     fn nccalc_top_restored_keeps_top() {
         assert_eq!(nccalc_top(100, false, 8), 100);
+        assert_eq!(nccalc_top(-8, false, 8), -8);
     }
 
     #[test]
-    fn nccalc_top_maximized_adds_frame() {
+    fn nccalc_top_maximized_uses_measured_inset() {
         assert_eq!(nccalc_top(-8, true, 8), 0);
+        assert_eq!(nccalc_top(-11, true, 11), 0);
+        // Non-resizable maximised window: the system only applied a 1 px border.
+        assert_eq!(nccalc_top(-1, true, 1), 0);
+        assert_eq!(nccalc_top(-1, true, 0), -1);
     }
 
     #[test]
-    fn top_band_classifies_edge_and_corners() {
-        assert_eq!(top_band_hit(100, 3, 800, 8), Some(HTTOP as isize));
-        assert_eq!(top_band_hit(2, 0, 800, 8), Some(HTTOPLEFT as isize));
-        assert_eq!(top_band_hit(799, 7, 800, 8), Some(HTTOPRIGHT as isize));
-        assert_eq!(top_band_hit(792, 7, 800, 8), Some(HTTOPRIGHT as isize));
-        assert_eq!(top_band_hit(791, 7, 800, 8), Some(HTTOP as isize));
+    fn top_band_edges_at_frame_11_and_14() {
+        for frame in [11, 14] {
+            assert_eq!(top_band_hit(200, 0, 800, frame), Some(TOP));
+            assert_eq!(top_band_hit(200, frame - 1, 800, frame), Some(TOP));
+            assert_eq!(top_band_hit(200, frame, 800, frame), None);
+            assert_eq!(top_band_hit(200, -1, 800, frame), None);
+        }
     }
 
     #[test]
-    fn top_band_ignores_outside_band() {
-        assert_eq!(top_band_hit(100, 8, 800, 8), None);
-        assert_eq!(top_band_hit(100, -1, 800, 8), None);
+    fn top_band_corner_boundaries() {
+        let (w, f) = (800, 8);
+        assert_eq!(top_band_hit(0, 0, w, f), Some(LEFT));
+        assert_eq!(top_band_hit(f - 1, 0, w, f), Some(LEFT));
+        assert_eq!(top_band_hit(f, 0, w, f), Some(TOP));
+        assert_eq!(top_band_hit(w - f - 1, 0, w, f), Some(TOP));
+        assert_eq!(top_band_hit(w - f, 0, w, f), Some(RIGHT));
+        assert_eq!(top_band_hit(w - 1, 0, w, f), Some(RIGHT));
+    }
+
+    #[test]
+    fn top_band_narrow_window_prefers_left_corner() {
+        // Width 10 < 2 * frame (16): x = 5 is in both corner ranges.
+        assert_eq!(top_band_hit(5, 0, 10, 8), Some(LEFT));
+        assert_eq!(top_band_hit(8, 0, 10, 8), Some(RIGHT));
     }
 
     #[test]

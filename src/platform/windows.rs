@@ -515,7 +515,10 @@ pub trait WindowAttributesExtWindows {
     /// irrelevant then. The application must draw its own caption buttons; [`Window::drag_window`]
     /// still moves the window. There is no runtime setter.
     ///
-    /// Windows 11 is the primary target. On Windows 10 it works with the native borders.
+    /// Windows 11 is the primary target. On Windows 10 it works with native borders, but the
+    /// 1 px accent line at the top edge is lost because the caption area is client area.
+    ///
+    /// Ignored when a menu is set with [`with_menu`](Self::with_menu).
     ///
     /// [`Window::drag_window`]: crate::window::Window::drag_window
     fn with_extend_content_into_title_bar(self, extend: bool) -> Self;

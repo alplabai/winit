@@ -57,11 +57,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN,
     WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MENUCHAR, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP,
-    WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
-    WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_WINDOWPOSCHANGED,
-    WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP, WS_VISIBLE,
+    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN,
+    WM_POINTERUP, WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+    WM_SETTINGCHANGE, WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH,
+    WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP,
+    WS_VISIBLE,
 };
 
 use crate::dpi::{PhysicalPosition, PhysicalSize};
@@ -1163,17 +1164,24 @@ unsafe fn public_window_callback_inner(
     let callback = || match msg {
         WM_NCCALCSIZE => {
             let window_flags = userdata.window_state_lock().window_flags;
-            if wparam != 0 && window_flags.extends_into_title_bar() {
+            if window_flags.extends_into_title_bar() {
                 // Let the system compute the native frame, then give the caption back to the
-                // client area.
-                let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
-                let saved_top = params.rgrc[0].top;
+                // client area. `lparam` is a `RECT` when `wparam == 0`, else the first rect of
+                // `NCCALCSIZE_PARAMS`. Only raw pointers are used so no reference is alive while
+                // `DefWindowProcW` writes through the same memory.
+                let rect = if wparam == 0 {
+                    lparam as *mut RECT
+                } else {
+                    unsafe { ptr::addr_of_mut!((*(lparam as *mut NCCALCSIZE_PARAMS)).rgrc[0]) }
+                };
+                let (saved_left, saved_top) = unsafe { ((*rect).left, (*rect).top) };
                 unsafe { DefWindowProcW(window, msg, wparam, lparam) };
-                params.rgrc[0].top = title_bar::nccalc_top(
-                    saved_top,
-                    util::is_maximized(window),
-                    util::frame_thickness(window),
-                );
+                unsafe {
+                    // The side inset the system really applied also is the maximised top offset.
+                    let inset = (*rect).left - saved_left;
+                    (*rect).top =
+                        title_bar::nccalc_top(saved_top, util::is_maximized(window), inset);
+                }
                 result = ProcResult::Value(0);
                 return;
             }

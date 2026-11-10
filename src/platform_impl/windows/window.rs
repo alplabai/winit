@@ -1339,7 +1339,9 @@ unsafe fn init(
     );
     window_flags.set(
         WindowFlags::EXTEND_CONTENT_INTO_TITLE_BAR,
-        attributes.platform_specific.extend_content_into_title_bar,
+        // A menu bar sits inside the caption area the flag removes, so the flag yields to it.
+        attributes.platform_specific.extend_content_into_title_bar
+            && attributes.platform_specific.menu.is_none(),
     );
     window_flags
         .set(WindowFlags::ALWAYS_ON_TOP, attributes.window_level == WindowLevel::AlwaysOnTop);
