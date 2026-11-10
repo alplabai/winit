@@ -1,7 +1,7 @@
 use crate::dpi::{PhysicalPosition, PhysicalSize, Size};
 use crate::icon::Icon;
 use crate::keyboard::ModifiersState;
-use crate::platform_impl::platform::{event_loop, util, Fullscreen, SelectedCursor};
+use crate::platform_impl::platform::{event_loop, title_bar, util, Fullscreen, SelectedCursor};
 use crate::window::{Theme, WindowAttributes};
 use bitflags::bitflags;
 use std::io;
@@ -123,6 +123,9 @@ bitflags! {
         const MARKER_ACTIVATE = 1 << 21;
 
         const CLIP_CHILDREN = 1 << 22;
+
+        /// Client area covers the caption (see `title_bar`). Needs `MARKER_DECORATIONS`.
+        const EXTEND_CONTENT_INTO_TITLE_BAR = 1 << 23;
 
         const EXCLUSIVE_FULLSCREEN_OR_MASK = WindowFlags::ALWAYS_ON_TOP.bits();
     }
@@ -425,7 +428,17 @@ impl WindowFlags {
         }
     }
 
+    /// Whether the client area currently extends over the caption.
+    pub fn extends_into_title_bar(self) -> bool {
+        self.contains(WindowFlags::EXTEND_CONTENT_INTO_TITLE_BAR | WindowFlags::MARKER_DECORATIONS)
+            && !self.intersects(
+                WindowFlags::MARKER_EXCLUSIVE_FULLSCREEN
+                    | WindowFlags::MARKER_BORDERLESS_FULLSCREEN,
+            )
+    }
+
     pub fn adjust_rect(self, hwnd: HWND, mut rect: RECT) -> Result<RECT, io::Error> {
+        let original = rect;
         unsafe {
             let mut style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
             let style_ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
@@ -447,6 +460,10 @@ impl WindowFlags {
                     AdjustWindowRectEx(&mut rect, style, b_menu.into(), style_ex)
                 }
             })?;
+            if self.extends_into_title_bar() {
+                // Must match `WM_NCCALCSIZE`, which keeps the window top as the client top.
+                rect = title_bar::zero_top_margin(original, rect);
+            }
             Ok(rect)
         }
     }

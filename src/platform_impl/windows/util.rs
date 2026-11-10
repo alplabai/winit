@@ -20,7 +20,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     ClipCursor, GetClientRect, GetClipCursor, GetCursorPos, GetSystemMetrics, GetWindowPlacement,
     GetWindowRect, IsIconic, ShowCursor, IDC_APPSTARTING, IDC_ARROW, IDC_CROSS, IDC_HAND, IDC_HELP,
     IDC_IBEAM, IDC_NO, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IDC_WAIT,
-    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_MAXIMIZE,
+    SM_CXPADDEDBORDER, SM_CXVIRTUALSCREEN, SM_CYSIZEFRAME, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_MAXIMIZE,
     WINDOWPLACEMENT,
 };
 
@@ -89,6 +89,17 @@ pub fn is_maximized(window: HWND) -> bool {
         GetWindowPlacement(window, &mut placement);
         placement.showCmd == SW_MAXIMIZE as u32
     }
+}
+
+/// Thickness of the sizing frame (`SM_CYSIZEFRAME + SM_CXPADDEDBORDER`) at the window's DPI.
+pub fn frame_thickness(window: HWND) -> i32 {
+    let metric = |index| unsafe {
+        match (*GET_DPI_FOR_WINDOW, *GET_SYSTEM_METRICS_FOR_DPI) {
+            (Some(get_dpi), Some(get_metrics)) => get_metrics(index, get_dpi(window)),
+            _ => GetSystemMetrics(index),
+        }
+    };
+    metric(SM_CYSIZEFRAME) + metric(SM_CXPADDEDBORDER)
 }
 
 pub fn set_cursor_hidden(hidden: bool) {
@@ -234,6 +245,8 @@ pub type AdjustWindowRectExForDpi = unsafe extern "system" fn(
     dpi: u32,
 ) -> BOOL;
 
+pub type GetSystemMetricsForDpi = unsafe extern "system" fn(index: i32, dpi: u32) -> i32;
+
 pub type GetPointerFrameInfoHistory = unsafe extern "system" fn(
     pointer_id: u32,
     entries_count: *mut u32,
@@ -258,6 +271,8 @@ pub(crate) static GET_DPI_FOR_WINDOW: Lazy<Option<GetDpiForWindow>> =
     Lazy::new(|| get_function!("user32.dll", GetDpiForWindow));
 pub(crate) static ADJUST_WINDOW_RECT_EX_FOR_DPI: Lazy<Option<AdjustWindowRectExForDpi>> =
     Lazy::new(|| get_function!("user32.dll", AdjustWindowRectExForDpi));
+pub(crate) static GET_SYSTEM_METRICS_FOR_DPI: Lazy<Option<GetSystemMetricsForDpi>> =
+    Lazy::new(|| get_function!("user32.dll", GetSystemMetricsForDpi));
 pub(crate) static GET_DPI_FOR_MONITOR: Lazy<Option<GetDpiForMonitor>> =
     Lazy::new(|| get_function!("shcore.dll", GetDpiForMonitor));
 pub(crate) static ENABLE_NON_CLIENT_DPI_SCALING: Lazy<Option<EnableNonClientDpiScaling>> =

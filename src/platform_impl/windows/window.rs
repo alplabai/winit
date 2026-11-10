@@ -1337,6 +1337,10 @@ unsafe fn init(
         WindowFlags::MARKER_UNDECORATED_SHADOW,
         attributes.platform_specific.decoration_shadow,
     );
+    window_flags.set(
+        WindowFlags::EXTEND_CONTENT_INTO_TITLE_BAR,
+        attributes.platform_specific.extend_content_into_title_bar,
+    );
     window_flags
         .set(WindowFlags::ALWAYS_ON_TOP, attributes.window_level == WindowLevel::AlwaysOnTop);
     window_flags

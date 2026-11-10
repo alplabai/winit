@@ -40,6 +40,10 @@ changelog entry.
 
 ## Unreleased
 
+### Added
+
+- On Windows, add `WindowAttributesExtWindows::with_extend_content_into_title_bar` to extend the client area over the caption while keeping the native frame.
+
 ### Fixed
 
 - On macOS, emit `WindowEvent::Occluded` with the current occlusion state when a fullscreen exit finishes, so `Window::fullscreen()` can be re-read after the state changes.

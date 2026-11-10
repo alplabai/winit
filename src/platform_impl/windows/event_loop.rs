@@ -57,7 +57,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN,
     WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MENUCHAR, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCDESTROY, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP,
+    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP,
     WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
     WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_WINDOWPOSCHANGED,
     WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED,
@@ -85,7 +85,7 @@ use crate::platform_impl::platform::window_state::{
     CursorFlags, ImeState, WindowFlags, WindowState,
 };
 use crate::platform_impl::platform::{
-    raw_input, util, wrap_device_id, Fullscreen, WindowId, DEVICE_ID,
+    raw_input, title_bar, util, wrap_device_id, Fullscreen, WindowId, DEVICE_ID,
 };
 use crate::window::{
     CustomCursor as RootCustomCursor, CustomCursorSource, Theme, WindowId as RootWindowId,
@@ -1163,6 +1163,20 @@ unsafe fn public_window_callback_inner(
     let callback = || match msg {
         WM_NCCALCSIZE => {
             let window_flags = userdata.window_state_lock().window_flags;
+            if wparam != 0 && window_flags.extends_into_title_bar() {
+                // Let the system compute the native frame, then give the caption back to the
+                // client area.
+                let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
+                let saved_top = params.rgrc[0].top;
+                unsafe { DefWindowProcW(window, msg, wparam, lparam) };
+                params.rgrc[0].top = title_bar::nccalc_top(
+                    saved_top,
+                    util::is_maximized(window),
+                    util::frame_thickness(window),
+                );
+                result = ProcResult::Value(0);
+                return;
+            }
             if wparam == 0 || window_flags.contains(WindowFlags::MARKER_DECORATIONS) {
                 result = ProcResult::DefWindowProc(wparam);
                 return;
@@ -1198,6 +1212,34 @@ unsafe fn public_window_callback_inner(
             }
 
             result = ProcResult::Value(0);
+        },
+
+        WM_NCHITTEST => {
+            let default = unsafe { DefWindowProcW(window, msg, wparam, lparam) };
+            result = ProcResult::Value(default);
+
+            let window_flags = userdata.window_state_lock().window_flags;
+            if default != HTCLIENT as isize
+                || !window_flags.extends_into_title_bar()
+                || !window_flags.contains(WindowFlags::RESIZABLE)
+                || util::is_maximized(window)
+            {
+                return;
+            }
+
+            // The top edge has no non-client border left to resize from, so carve one out of the
+            // client area.
+            let mut point = POINT { x: lparam as i16 as i32, y: (lparam >> 16) as i16 as i32 };
+            let mut client = unsafe { mem::zeroed::<RECT>() };
+            if unsafe { ScreenToClient(window, &mut point) } == 0
+                || unsafe { GetClientRect(window, &mut client) } == 0
+            {
+                return;
+            }
+            let frame = util::frame_thickness(window);
+            if let Some(hit) = title_bar::top_band_hit(point.x, point.y, client.right, frame) {
+                result = ProcResult::Value(hit);
+            }
         },
 
         WM_ENTERSIZEMOVE => {

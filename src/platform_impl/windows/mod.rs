@@ -31,6 +31,7 @@ pub struct PlatformSpecificWindowAttributes {
     pub skip_taskbar: bool,
     pub class_name: String,
     pub decoration_shadow: bool,
+    pub extend_content_into_title_bar: bool,
     pub backdrop_type: BackdropType,
     pub clip_children: bool,
     pub border_color: Option<Color>,
@@ -50,6 +51,7 @@ impl Default for PlatformSpecificWindowAttributes {
             skip_taskbar: false,
             class_name: "Window Class".to_string(),
             decoration_shadow: false,
+            extend_content_into_title_bar: false,
             backdrop_type: BackdropType::default(),
             clip_children: true,
             border_color: None,
@@ -192,5 +194,6 @@ mod keyboard;
 mod keyboard_layout;
 mod monitor;
 mod raw_input;
+mod title_bar;
 mod window;
 mod window_state;

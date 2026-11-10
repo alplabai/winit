@@ -508,6 +508,18 @@ pub trait WindowAttributesExtWindows {
     /// Enabling the shadow causes a thin 1px line to appear on the top of the window.
     fn with_undecorated_shadow(self, shadow: bool) -> Self;
 
+    /// Extends the client area over the title bar while keeping the native frame (resize
+    /// borders, shadow, rounded corners). Defaults to `false`.
+    ///
+    /// Only effective with decorations enabled and outside fullscreen; `undecorated_shadow` is
+    /// irrelevant then. The application must draw its own caption buttons; [`Window::drag_window`]
+    /// still moves the window. There is no runtime setter.
+    ///
+    /// Windows 11 is the primary target. On Windows 10 it works with the native borders.
+    ///
+    /// [`Window::drag_window`]: crate::window::Window::drag_window
+    fn with_extend_content_into_title_bar(self, extend: bool) -> Self;
+
     /// Sets system-drawn backdrop type.
     ///
     /// Requires Windows 11 build 22523+.
@@ -583,6 +595,12 @@ impl WindowAttributesExtWindows for WindowAttributes {
     #[inline]
     fn with_undecorated_shadow(mut self, shadow: bool) -> Self {
         self.platform_specific.decoration_shadow = shadow;
+        self
+    }
+
+    #[inline]
+    fn with_extend_content_into_title_bar(mut self, extend: bool) -> Self {
+        self.platform_specific.extend_content_into_title_bar = extend;
         self
     }
 
