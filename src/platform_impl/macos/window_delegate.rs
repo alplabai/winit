@@ -300,6 +300,9 @@ define_class!(
             trace_scope!("windowDidExitFullScreen:");
 
             self.restore_state_from_fullscreen();
+            // `fullscreen()` only flips here, after the last animation resize,
+            // so give the application a late event to re-read it on.
+            self.emit_occlusion_event();
             self.ivars().in_fullscreen_transition.set(false);
             if let Some(target_fullscreen) = self.ivars().target_fullscreen.take() {
                 self.set_fullscreen(target_fullscreen);
@@ -344,8 +347,7 @@ define_class!(
         #[unsafe(method(windowDidChangeOcclusionState:))]
         fn window_did_change_occlusion_state(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidChangeOcclusionState:");
-            let visible = self.window().occlusionState().contains(NSWindowOcclusionState::Visible);
-            self.queue_event(WindowEvent::Occluded(!visible));
+            self.emit_occlusion_event();
         }
 
         #[unsafe(method(windowDidChangeScreen:))]
@@ -838,6 +840,11 @@ impl WindowDelegate {
             window.setContentSize(size);
         }
         app_delegate.handle_window_event(window.id(), WindowEvent::Resized(physical_size));
+    }
+
+    fn emit_occlusion_event(&self) {
+        let visible = self.window().occlusionState().contains(NSWindowOcclusionState::Visible);
+        self.queue_event(WindowEvent::Occluded(!visible));
     }
 
     fn emit_move_event(&self) {

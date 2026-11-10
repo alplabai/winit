@@ -39,3 +39,7 @@ The migration guide could reference other migration examples in the current
 changelog entry.
 
 ## Unreleased
+
+### Fixed
+
+- On macOS, emit `WindowEvent::Occluded` with the current occlusion state when a fullscreen exit finishes, so `Window::fullscreen()` can be re-read after the state changes.
