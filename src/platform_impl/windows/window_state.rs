@@ -56,6 +56,9 @@ pub(crate) struct WindowState {
     pub dragging: bool,
 
     pub skip_taskbar: bool,
+
+    /// Caption regions in client coordinates, see `WindowExtWindows::set_title_bar_caption`.
+    pub title_bar_caption: Vec<RECT>,
 }
 
 #[derive(Clone)]
@@ -180,6 +183,8 @@ impl WindowState {
             dragging: false,
 
             skip_taskbar: false,
+
+            title_bar_caption: Vec::new(),
         }
     }
 

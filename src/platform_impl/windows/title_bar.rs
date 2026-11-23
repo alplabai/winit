@@ -3,6 +3,8 @@
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::UI::WindowsAndMessaging::{HTTOP, HTTOPLEFT, HTTOPRIGHT};
 
+use crate::dpi::{PhysicalPosition, PhysicalSize};
+
 /// Client-rect top after `DefWindowProc` for `WM_NCCALCSIZE`: the caption is dropped. A maximised
 /// window sits `inset` px beyond the monitor (the side inset the system applied), so its client
 /// area starts `inset` px lower.
@@ -28,6 +30,23 @@ pub(super) fn top_band_hit(x: i32, y: i32, width: i32, frame: i32) -> Option<isi
     } else {
         HTTOP
     } as isize)
+}
+
+/// Client rect of a caption region given by its origin and size.
+pub(super) fn rect(origin: PhysicalPosition<i32>, size: PhysicalSize<u32>) -> RECT {
+    let width = i32::try_from(size.width).unwrap_or(i32::MAX);
+    let height = i32::try_from(size.height).unwrap_or(i32::MAX);
+    RECT {
+        left: origin.x,
+        top: origin.y,
+        right: origin.x.saturating_add(width),
+        bottom: origin.y.saturating_add(height),
+    }
+}
+
+/// Whether the client point lies in one of the regions; right and bottom edges are exclusive.
+pub(super) fn contains(regions: &[RECT], x: i32, y: i32) -> bool {
+    regions.iter().any(|r| (r.left..r.right).contains(&x) && (r.top..r.bottom).contains(&y))
 }
 
 /// Keeps the top edge of the requested client rect, discarding the caption margin that
@@ -86,6 +105,30 @@ mod tests {
         // Width 10 < 2 * frame (16): x = 5 is in both corner ranges.
         assert_eq!(top_band_hit(5, 0, 10, 8), Some(LEFT));
         assert_eq!(top_band_hit(8, 0, 10, 8), Some(RIGHT));
+    }
+
+    #[test]
+    fn caption_rect_from_origin_and_size() {
+        let r = rect(PhysicalPosition::new(40, 0), PhysicalSize::new(300, 32));
+        assert_eq!((r.left, r.top, r.right, r.bottom), (40, 0, 340, 32));
+        // Sizes past i32 saturate instead of wrapping to a negative right edge.
+        let r = rect(PhysicalPosition::new(10, 0), PhysicalSize::new(u32::MAX, 1));
+        assert_eq!(r.right, i32::MAX);
+    }
+
+    #[test]
+    fn caption_contains_is_end_exclusive() {
+        let regions = [
+            rect(PhysicalPosition::new(40, 0), PhysicalSize::new(300, 32)),
+            rect(PhysicalPosition::new(500, 0), PhysicalSize::new(100, 32)),
+        ];
+        assert!(contains(&regions, 40, 0));
+        assert!(contains(&regions, 339, 31));
+        assert!(!contains(&regions, 340, 10));
+        assert!(!contains(&regions, 100, 32));
+        assert!(!contains(&regions, 39, 10));
+        assert!(contains(&regions, 550, 5));
+        assert!(!contains(&[], 0, 0));
     }
 
     #[test]

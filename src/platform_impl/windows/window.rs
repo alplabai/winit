@@ -67,7 +67,7 @@ use crate::platform_impl::platform::monitor::{self, MonitorHandle};
 use crate::platform_impl::platform::window_state::{
     CursorFlags, SavedWindow, WindowFlags, WindowState,
 };
-use crate::platform_impl::platform::{util, Fullscreen, SelectedCursor, WindowId};
+use crate::platform_impl::platform::{title_bar, util, Fullscreen, SelectedCursor, WindowId};
 use crate::window::{
     CursorGrabMode, ImePurpose, ResizeDirection, Theme, UserAttentionType, WindowAttributes,
     WindowButtons, WindowLevel,
@@ -1095,6 +1095,13 @@ impl Window {
                 mem::size_of::<Color>() as _,
             );
         }
+    }
+
+    #[inline]
+    pub fn set_title_bar_caption(&self, regions: &[(PhysicalPosition<i32>, PhysicalSize<u32>)]) {
+        // Read by `WM_NCHITTEST` on the window thread; no window message is needed.
+        self.window_state_lock().title_bar_caption =
+            regions.iter().map(|&(origin, size)| title_bar::rect(origin, size)).collect();
     }
 
     #[inline]

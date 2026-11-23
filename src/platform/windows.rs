@@ -6,7 +6,7 @@ use std::borrow::Borrow;
 use std::ffi::c_void;
 use std::path::Path;
 
-use crate::dpi::PhysicalSize;
+use crate::dpi::{PhysicalPosition, PhysicalSize};
 use crate::event::DeviceId;
 use crate::event_loop::EventLoopBuilder;
 use crate::monitor::MonitorHandle;
@@ -298,6 +298,19 @@ pub trait WindowExtWindows {
     /// Supported starting with Windows 11 Build 22000.
     fn set_title_text_color(&self, color: Color);
 
+    /// Sets the caption regions of a window created with
+    /// [`with_extend_content_into_title_bar`](WindowAttributesExtWindows::with_extend_content_into_title_bar).
+    ///
+    /// Each region is a rectangle in physical client coordinates (origin and size). Inside them
+    /// the window answers `WM_NCHITTEST` with `HTCAPTION`, so the system moves the window,
+    /// snaps it when dragged to a screen edge, maximizes it on double-click and opens the system
+    /// menu on right-click. Mouse input inside a region does not reach the application.
+    ///
+    /// The regions replace the previous ones; an empty slice removes them. They are not scaled
+    /// on DPI changes, so set them again after the window is resized or its scale factor changes.
+    /// Has no effect on windows without the extended title bar.
+    fn set_title_bar_caption(&self, regions: &[(PhysicalPosition<i32>, PhysicalSize<u32>)]);
+
     /// Sets the preferred style of the window corners.
     ///
     /// Supported starting with Windows 11 Build 22000.
@@ -400,6 +413,11 @@ impl WindowExtWindows for Window {
     #[inline]
     fn set_title_text_color(&self, color: Color) {
         self.window.set_title_text_color(color)
+    }
+
+    #[inline]
+    fn set_title_bar_caption(&self, regions: &[(PhysicalPosition<i32>, PhysicalSize<u32>)]) {
+        self.window.set_title_bar_caption(regions)
     }
 
     #[inline]

@@ -1227,26 +1227,35 @@ unsafe fn public_window_callback_inner(
             result = ProcResult::Value(default);
 
             let window_flags = userdata.window_state_lock().window_flags;
-            if default != HTCLIENT as isize
-                || !window_flags.extends_into_title_bar()
-                || !window_flags.contains(WindowFlags::RESIZABLE)
-                || util::is_maximized(window)
-            {
+            if default != HTCLIENT as isize || !window_flags.extends_into_title_bar() {
+                return;
+            }
+
+            let mut point = POINT { x: lparam as i16 as i32, y: (lparam >> 16) as i16 as i32 };
+            if unsafe { ScreenToClient(window, &mut point) } == 0 {
                 return;
             }
 
             // The top edge has no non-client border left to resize from, so carve one out of the
-            // client area.
-            let mut point = POINT { x: lparam as i16 as i32, y: (lparam >> 16) as i16 as i32 };
-            let mut client = unsafe { mem::zeroed::<RECT>() };
-            if unsafe { ScreenToClient(window, &mut point) } == 0
-                || unsafe { GetClientRect(window, &mut client) } == 0
-            {
-                return;
+            // client area. It takes precedence over caption regions under it.
+            if window_flags.contains(WindowFlags::RESIZABLE) && !util::is_maximized(window) {
+                let mut client = unsafe { mem::zeroed::<RECT>() };
+                if unsafe { GetClientRect(window, &mut client) } == 0 {
+                    return;
+                }
+                let frame = util::frame_thickness(window);
+                if let Some(hit) = title_bar::top_band_hit(point.x, point.y, client.right, frame) {
+                    result = ProcResult::Value(hit);
+                    return;
+                }
             }
-            let frame = util::frame_thickness(window);
-            if let Some(hit) = title_bar::top_band_hit(point.x, point.y, client.right, frame) {
-                result = ProcResult::Value(hit);
+
+            if title_bar::contains(
+                &userdata.window_state_lock().title_bar_caption,
+                point.x,
+                point.y,
+            ) {
+                result = ProcResult::Value(HTCAPTION as isize);
             }
         },
 
