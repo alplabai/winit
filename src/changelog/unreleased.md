@@ -44,6 +44,7 @@ changelog entry.
 
 - On Windows, add `WindowAttributesExtWindows::with_extend_content_into_title_bar` to extend the client area over the caption while keeping the native frame.
 - On Windows, add `WindowExtWindows::set_title_bar_caption` to mark client regions of such a window as its caption: `WM_NCHITTEST` answers `HTCAPTION` there, and a right click there opens the system menu.
+- On Windows, add `WindowExtWindows::set_title_bar_maximize` to mark the application's maximize button of such a window: `WM_NCHITTEST` answers `HTMAXBUTTON` there, so Windows 11 shows Snap Layouts on hover, while its mouse input still reaches the application as cursor and button events.
 
 ### Fixed
 
