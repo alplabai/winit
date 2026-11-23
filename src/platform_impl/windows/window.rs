@@ -34,14 +34,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, EnableMenuItem, FlashWindowEx, GetClientRect, GetCursorPos,
     GetForegroundWindow, GetSystemMenu, GetSystemMetrics, GetWindowPlacement, GetWindowTextLengthW,
     GetWindowTextW, IsWindowVisible, LoadCursorW, PeekMessageW, PostMessageW, RegisterClassExW,
-    SetCursor, SetCursorPos, SetForegroundWindow, SetMenuDefaultItem, SetWindowDisplayAffinity,
-    SetWindowPlacement, SetWindowPos, SetWindowTextW, TrackPopupMenu, CS_HREDRAW, CS_VREDRAW,
-    CW_USEDEFAULT, FLASHWINFO, FLASHW_ALL, FLASHW_STOP, FLASHW_TIMERNOFG, FLASHW_TRAY,
-    GWLP_HINSTANCE, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT, MENU_ITEM_STATE, MFS_DISABLED, MFS_ENABLED, MF_BYCOMMAND, NID_READY,
-    PM_NOREMOVE, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_MOVE, SC_RESTORE, SC_SIZE, SM_DIGITIZER,
-    SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, TPM_LEFTALIGN, TPM_RETURNCMD,
-    WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WM_NCLBUTTONDOWN, WM_SYSCOMMAND, WNDCLASSEXW,
+    SendMessageW, SetCursor, SetCursorPos, SetForegroundWindow, SetMenuDefaultItem,
+    SetWindowDisplayAffinity, SetWindowPlacement, SetWindowPos, SetWindowTextW, TrackPopupMenu,
+    CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, FLASHWINFO, FLASHW_ALL, FLASHW_STOP, FLASHW_TIMERNOFG,
+    FLASHW_TRAY, GWLP_HINSTANCE, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT,
+    HTTOP, HTTOPLEFT, HTTOPRIGHT, MENU_ITEM_STATE, MFS_DISABLED, MFS_ENABLED, MF_BYCOMMAND,
+    NID_READY, PM_NOREMOVE, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_MOVE, SC_RESTORE, SC_SIZE,
+    SIZE_MAXIMIZED, SIZE_RESTORED, SM_DIGITIZER, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE,
+    SWP_NOZORDER, TPM_LEFTALIGN, TPM_RETURNCMD, WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WM_NCLBUTTONDOWN,
+    WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
 };
 
 use tracing::warn;
@@ -741,6 +742,10 @@ impl Window {
                 PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_NOREMOVE);
             }
 
+            // The style change and the taskbar mark below resize the window to the old outer
+            // rectangle on the way; only the final bounds may reach the app as `Resized` (#111).
+            window_state.lock().unwrap().suppress_resized = true;
+
             // Update window style
             WindowState::set_window_flags(window_state.lock().unwrap(), window.hwnd(), |f| {
                 f.set(
@@ -761,6 +766,8 @@ impl Window {
             unsafe {
                 taskbar_mark_fullscreen(window.hwnd(), fullscreen.is_some());
             }
+
+            window_state.lock().unwrap().suppress_resized = false;
 
             // Update window bounds
             match &fullscreen {
@@ -806,6 +813,24 @@ impl Window {
                         }
                     }
                 },
+            }
+
+            // The final size can already be reached while `Resized` is held back, and then the
+            // bounds above change nothing (leaving fullscreen back to a maximized window): report
+            // the current size once.
+            if mem::take(&mut window_state.lock().unwrap().pending_resized) {
+                unsafe {
+                    let mut rect: RECT = mem::zeroed();
+                    GetClientRect(window.hwnd(), &mut rect);
+                    let kind = if util::is_maximized(window.hwnd()) {
+                        SIZE_MAXIMIZED
+                    } else {
+                        SIZE_RESTORED
+                    };
+                    let size =
+                        ((rect.bottom - rect.top) << 16) | ((rect.right - rect.left) & 0xffff);
+                    SendMessageW(window.hwnd(), WM_SIZE, kind as WPARAM, size as LPARAM);
+                }
             }
         });
     }

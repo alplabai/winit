@@ -66,6 +66,14 @@ pub(crate) struct WindowState {
     /// The mouse leave tracking armed with `TrackMouseEvent`: `Some(false)` for the client area,
     /// `Some(true)` for the maximize region of the title bar (non-client), `None` when none is.
     pub leave_tracking: Option<bool>,
+
+    /// Set while `set_fullscreen` changes the window style: the frame is recomputed with the old
+    /// outer rectangle there, and that intermediate `WM_SIZE` must not reach the app as a
+    /// `Resized` (#111). The move to the final bounds comes after it is cleared.
+    pub suppress_resized: bool,
+
+    /// A `WM_SIZE` was held back by `suppress_resized` and no later one reported the size yet.
+    pub pending_resized: bool,
 }
 
 #[derive(Clone)]
@@ -194,6 +202,8 @@ impl WindowState {
             title_bar_caption: Vec::new(),
             title_bar_maximize: None,
             leave_tracking: None,
+            suppress_resized: false,
+            pending_resized: false,
         }
     }
 

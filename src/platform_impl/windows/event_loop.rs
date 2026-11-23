@@ -1510,7 +1510,7 @@ unsafe fn public_window_callback_inner(
                 event: Resized(physical_size),
             };
 
-            {
+            let suppress_resized = {
                 let mut w = userdata.window_state_lock();
                 // See WindowFlags::MARKER_RETAIN_STATE_ON_SIZE docs for info on why this `if` check
                 // exists.
@@ -1518,8 +1518,12 @@ unsafe fn public_window_callback_inner(
                     let maximized = wparam == SIZE_MAXIMIZED as usize;
                     w.set_window_flags_in_place(|f| f.set(WindowFlags::MAXIMIZED, maximized));
                 }
+                w.pending_resized = w.suppress_resized;
+                w.suppress_resized
+            };
+            if !suppress_resized {
+                userdata.send_event(event);
             }
-            userdata.send_event(event);
             result = ProcResult::Value(0);
         },
 
