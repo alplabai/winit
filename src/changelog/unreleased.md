@@ -43,6 +43,7 @@ changelog entry.
 ### Added
 
 - On Windows, add `WindowAttributesExtWindows::with_extend_content_into_title_bar` to extend the client area over the caption while keeping the native frame.
+- On Windows, add `WindowExtWindows::set_title_bar_caption` to mark client regions of such a window as its caption: `WM_NCHITTEST` answers `HTCAPTION` there, and a right click there opens the system menu.
 
 ### Fixed
 
