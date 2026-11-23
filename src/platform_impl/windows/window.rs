@@ -582,60 +582,7 @@ impl Window {
                 point
             };
 
-            // get the current system menu
-            let h_menu = GetSystemMenu(self.hwnd(), 0);
-            if h_menu.is_null() {
-                warn!("The corresponding window doesn't have a system menu");
-                // This situation should not be treated as an error so just return without showing
-                // menu.
-                return;
-            }
-
-            fn enable(b: bool) -> MENU_ITEM_STATE {
-                if b {
-                    MFS_ENABLED
-                } else {
-                    MFS_DISABLED
-                }
-            }
-
-            // Change the menu items according to the current window status.
-
-            let restore_btn = enable(self.is_maximized() && self.is_resizable());
-            let size_btn = enable(!self.is_maximized() && self.is_resizable());
-            let maximize_btn = enable(!self.is_maximized() && self.is_resizable());
-
-            EnableMenuItem(h_menu, SC_RESTORE, MF_BYCOMMAND | restore_btn);
-            EnableMenuItem(h_menu, SC_MOVE, MF_BYCOMMAND | enable(!self.is_maximized()));
-            EnableMenuItem(h_menu, SC_SIZE, MF_BYCOMMAND | size_btn);
-            EnableMenuItem(h_menu, SC_MINIMIZE, MF_BYCOMMAND | MFS_ENABLED);
-            EnableMenuItem(h_menu, SC_MAXIMIZE, MF_BYCOMMAND | maximize_btn);
-            EnableMenuItem(h_menu, SC_CLOSE, MF_BYCOMMAND | MFS_ENABLED);
-
-            // Set the default menu item.
-            SetMenuDefaultItem(h_menu, SC_CLOSE, 0);
-
-            // Popup the system menu at the position.
-            let result = TrackPopupMenu(
-                h_menu,
-                TPM_RETURNCMD | TPM_LEFTALIGN, /* for now im using LTR, but we have to use user
-                                                * layout direction */
-                point.x,
-                point.y,
-                0,
-                self.hwnd(),
-                std::ptr::null_mut(),
-            );
-
-            if result == 0 {
-                // User canceled the menu, no need to continue.
-                return;
-            }
-
-            // Send the command that the user select to the corresponding window.
-            if PostMessageW(self.hwnd(), WM_SYSCOMMAND, result as _, 0) == 0 {
-                warn!("Can't post the system menu message to the window.");
-            }
+            track_system_menu(self.hwnd(), point, self.is_maximized(), self.is_resizable());
         }
     }
 
@@ -1528,6 +1475,68 @@ unsafe fn taskbar_mark_fullscreen(handle: HWND, fullscreen: bool) {
         let mark_fullscreen_window = unsafe { (*(*task_bar_list2).lpVtbl).MarkFullscreenWindow };
         unsafe { mark_fullscreen_window(task_bar_list2, handle, fullscreen.into()) };
     })
+}
+
+/// Shows the system menu at `point` (screen coordinates) and posts the chosen command as
+/// `WM_SYSCOMMAND`. Shared by `Window::show_window_menu` and the right click on a caption region
+/// of a window that extends into the title bar, where `DefWindowProc` shows no menu.
+pub(crate) unsafe fn track_system_menu(hwnd: HWND, point: POINT, maximized: bool, resizable: bool) {
+    unsafe {
+        // get the current system menu
+        let h_menu = GetSystemMenu(hwnd, 0);
+        if h_menu.is_null() {
+            warn!("The corresponding window doesn't have a system menu");
+            // This situation should not be treated as an error so just return without showing
+            // menu.
+            return;
+        }
+
+        fn enable(b: bool) -> MENU_ITEM_STATE {
+            if b {
+                MFS_ENABLED
+            } else {
+                MFS_DISABLED
+            }
+        }
+
+        // Change the menu items according to the current window status.
+
+        let restore_btn = enable(maximized && resizable);
+        let size_btn = enable(!maximized && resizable);
+        let maximize_btn = enable(!maximized && resizable);
+
+        EnableMenuItem(h_menu, SC_RESTORE, MF_BYCOMMAND | restore_btn);
+        EnableMenuItem(h_menu, SC_MOVE, MF_BYCOMMAND | enable(!maximized));
+        EnableMenuItem(h_menu, SC_SIZE, MF_BYCOMMAND | size_btn);
+        EnableMenuItem(h_menu, SC_MINIMIZE, MF_BYCOMMAND | MFS_ENABLED);
+        EnableMenuItem(h_menu, SC_MAXIMIZE, MF_BYCOMMAND | maximize_btn);
+        EnableMenuItem(h_menu, SC_CLOSE, MF_BYCOMMAND | MFS_ENABLED);
+
+        // Set the default menu item.
+        SetMenuDefaultItem(h_menu, SC_CLOSE, 0);
+
+        // Popup the system menu at the position.
+        let result = TrackPopupMenu(
+            h_menu,
+            TPM_RETURNCMD | TPM_LEFTALIGN, /* for now im using LTR, but we have to use user
+                                            * layout direction */
+            point.x,
+            point.y,
+            0,
+            hwnd,
+            std::ptr::null_mut(),
+        );
+
+        if result == 0 {
+            // User canceled the menu, no need to continue.
+            return;
+        }
+
+        // Send the command that the user select to the corresponding window.
+        if PostMessageW(hwnd, WM_SYSCOMMAND, result as _, 0) == 0 {
+            warn!("Can't post the system menu message to the window.");
+        }
+    }
 }
 
 pub(crate) unsafe fn set_skip_taskbar(hwnd: HWND, skip: bool) {

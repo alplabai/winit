@@ -57,10 +57,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN,
     WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MENUCHAR, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN,
-    WM_POINTERUP, WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
-    WM_SETTINGCHANGE, WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH,
-    WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW,
+    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCRBUTTONUP, WM_PAINT,
+    WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR,
+    WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WM_TOUCH, WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP,
     WS_VISIBLE,
 };
@@ -1307,6 +1307,27 @@ unsafe fn public_window_callback_inner(
                 unsafe { PostMessageW(window, WM_MOUSEMOVE, 0, lparam) };
             }
             result = ProcResult::DefWindowProc(wparam);
+        },
+
+        WM_NCRBUTTONUP if wparam == HTCAPTION as WPARAM => {
+            // `DefWindowProc` only shows the system menu over a real caption, so a caption region
+            // of a window that extends into the title bar shows it here. `lparam` is in screen
+            // coordinates.
+            let window_flags = userdata.window_state_lock().window_flags;
+            if window_flags.extends_into_title_bar() {
+                let point = POINT { x: lparam as i16 as i32, y: (lparam >> 16) as i16 as i32 };
+                unsafe {
+                    crate::platform_impl::platform::window::track_system_menu(
+                        window,
+                        point,
+                        util::is_maximized(window),
+                        window_flags.contains(WindowFlags::RESIZABLE),
+                    )
+                };
+                result = ProcResult::Value(0);
+            } else {
+                result = ProcResult::DefWindowProc(wparam);
+            }
         },
 
         WM_CLOSE => {
