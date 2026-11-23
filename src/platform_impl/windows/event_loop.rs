@@ -1770,12 +1770,17 @@ unsafe fn public_window_callback_inner(
             use crate::event::MouseButton::Left;
             use crate::event::WindowEvent::MouseInput;
 
-            unsafe { release_mouse(userdata.window_state_lock()) };
-            update_modifiers(window, userdata);
-            userdata.send_event(Event::WindowEvent {
-                window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
-            });
+            // A press on the region captures the mouse, so the release normally arrives as
+            // `WM_LBUTTONUP`; without a capture there was no press to pair this release with.
+            let captured = userdata.window_state_lock().mouse.capture_count > 0;
+            if captured {
+                unsafe { release_mouse(userdata.window_state_lock()) };
+                update_modifiers(window, userdata);
+                userdata.send_event(Event::WindowEvent {
+                    window_id: RootWindowId(WindowId(window)),
+                    event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
+                });
+            }
             result = ProcResult::Value(0);
         },
 
@@ -1797,7 +1802,14 @@ unsafe fn public_window_callback_inner(
         },
 
         WM_MOUSELEAVE => {
-            userdata.window_state_lock().leave_tracking = None;
+            // Only client tracking ends here. When the cursor crosses into the maximize region,
+            // its `WM_NCMOUSEMOVE` may already have armed non-client tracking.
+            {
+                let mut w = userdata.window_state_lock();
+                if w.leave_tracking == Some(false) {
+                    w.leave_tracking = None;
+                }
+            }
             unsafe { pointer_left_unless_inside(window, userdata) };
             result = ProcResult::Value(0);
         },
@@ -2242,7 +2254,11 @@ unsafe fn public_window_callback_inner(
                 // The return value for the preceding `WM_NCHITTEST` message is conveniently
                 // provided through the low-order word of lParam. We use that here since
                 // `WM_MOUSEMOVE` seems to come after `WM_SETCURSOR` for a given cursor movement.
-                let in_client_area = super::loword(lparam as u32) as u32 == HTCLIENT;
+                let hit = super::loword(lparam as u32) as u32;
+                // The maximize region of an extended title bar is the application's own button,
+                // so it gets the application's cursor too.
+                let in_client_area = hit == HTCLIENT
+                    || (hit == HTMAXBUTTON && window_state.window_flags.extends_into_title_bar());
                 if in_client_area {
                     Some(window_state.mouse.selected_cursor.clone())
                 } else {
@@ -2835,13 +2851,32 @@ unsafe fn pointer_moved(window: HWND, userdata: &WindowData, x: i32, y: i32, ove
 /// Handles the end of leave tracking. In a window that extends into the title bar, tracking also
 /// ends while the cursor stays over the window: on crossing between the client area and the
 /// maximize region, when the mouse is captured, or when Snap Layouts shows. The cursor has not
-/// left then, and the next move arms tracking again.
+/// left then, so tracking of the kind under the cursor is armed again right away: the cursor may
+/// not move over this window again (it can go straight into the Snap Layouts flyout).
 unsafe fn pointer_left_unless_inside(window: HWND, userdata: &WindowData) {
-    let inside = extends_into_title_bar(userdata)
-        && unsafe { hit_under_cursor(window) }
-            .is_some_and(|hit| hit == HTCLIENT as isize || hit == HTMAXBUTTON as isize);
-    if !inside {
-        unsafe { pointer_left(window, userdata) };
+    let hit =
+        if extends_into_title_bar(userdata) { unsafe { hit_under_cursor(window) } } else { None };
+    let over_maximize = match hit {
+        Some(hit) if hit == HTMAXBUTTON as isize => true,
+        Some(hit) if hit == HTCLIENT as isize => false,
+        _ => {
+            unsafe { pointer_left(window, userdata) };
+            return;
+        },
+    };
+
+    // Under capture every move re-arms tracking anyway, and arming here could loop with a
+    // capture that cancels it.
+    let rearm = {
+        let mut w = userdata.window_state_lock();
+        let rearm = w.mouse.capture_count == 0;
+        if rearm {
+            w.leave_tracking = Some(over_maximize);
+        }
+        rearm
+    };
+    if rearm {
+        unsafe { track_mouse_leave(window, over_maximize) };
     }
 }
 
