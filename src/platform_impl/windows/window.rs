@@ -1052,6 +1052,13 @@ impl Window {
     }
 
     #[inline]
+    pub fn set_title_bar_maximize(&self, region: Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>) {
+        // Read by `WM_NCHITTEST` on the window thread; no window message is needed.
+        self.window_state_lock().title_bar_maximize =
+            region.map(|(origin, size)| title_bar::rect(origin, size));
+    }
+
+    #[inline]
     pub fn set_title_text_color(&self, color: Color) {
         unsafe {
             DwmSetWindowAttribute(

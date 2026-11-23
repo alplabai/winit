@@ -31,7 +31,7 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Controls::{HOVER_DEFAULT, WM_MOUSELEAVE};
 use windows_sys::Win32::UI::Input::Ime::{GCS_COMPSTR, GCS_RESULTSTR, ISC_SHOWUICOMPOSITIONWINDOW};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT,
 };
 use windows_sys::Win32::UI::Input::Pointer::{
     POINTER_FLAG_DOWN, POINTER_FLAG_UP, POINTER_FLAG_UPDATE,
@@ -46,23 +46,24 @@ use windows_sys::Win32::UI::Input::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
     GetMenu, LoadCursorW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW,
-    RegisterClassExW, RegisterWindowMessageA, SetCursor, SetWindowPos, TranslateMessage,
-    CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE, GWL_USERDATA, HTCAPTION, HTCLIENT,
-    MINMAXINFO, MNC_CLOSE, MSG, MWMO_INPUTAVAILABLE, NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN,
-    PT_TOUCH, QS_ALLINPUT, RI_MOUSE_HWHEEL, RI_MOUSE_WHEEL, SC_MINIMIZE, SC_RESTORE,
-    SIZE_MAXIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WHEEL_DELTA, WINDOWPOS,
-    WMSZ_BOTTOM, WMSZ_BOTTOMLEFT, WMSZ_BOTTOMRIGHT, WMSZ_LEFT, WMSZ_RIGHT, WMSZ_TOP, WMSZ_TOPLEFT,
-    WMSZ_TOPRIGHT, WM_CAPTURECHANGED, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
-    WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
+    RegisterClassExW, RegisterWindowMessageA, SendMessageW, SetCursor, SetWindowPos,
+    TranslateMessage, WindowFromPoint, CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE,
+    GWL_USERDATA, HTCAPTION, HTCLIENT, HTMAXBUTTON, MINMAXINFO, MNC_CLOSE, MSG,
+    MWMO_INPUTAVAILABLE, NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN, PT_TOUCH, QS_ALLINPUT,
+    RI_MOUSE_HWHEEL, RI_MOUSE_WHEEL, SC_MINIMIZE, SC_RESTORE, SIZE_MAXIMIZED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WHEEL_DELTA, WINDOWPOS, WMSZ_BOTTOM, WMSZ_BOTTOMLEFT,
+    WMSZ_BOTTOMRIGHT, WMSZ_LEFT, WMSZ_RIGHT, WMSZ_TOP, WMSZ_TOPLEFT, WMSZ_TOPRIGHT,
+    WM_CAPTURECHANGED, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_ENTERSIZEMOVE,
+    WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
     WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN,
     WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MENUCHAR, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCRBUTTONUP, WM_PAINT,
-    WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR,
-    WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WM_TOUCH, WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP,
-    WS_VISIBLE,
+    WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
+    WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_NCRBUTTONUP, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP,
+    WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
+    WM_SIZE, WM_SIZING, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_WINDOWPOSCHANGED,
+    WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP, WS_VISIBLE,
 };
 
 use crate::dpi::{PhysicalPosition, PhysicalSize};
@@ -1250,12 +1251,14 @@ unsafe fn public_window_callback_inner(
                 }
             }
 
-            if title_bar::contains(
-                &userdata.window_state_lock().title_bar_caption,
+            let state = userdata.window_state_lock();
+            if let Some(hit) = title_bar::region_hit(
+                &state.title_bar_caption,
+                state.title_bar_maximize,
                 point.x,
                 point.y,
             ) {
-                result = ProcResult::Value(HTCAPTION as isize);
+                result = ProcResult::Value(hit);
             }
         },
 
@@ -1274,6 +1277,26 @@ unsafe fn public_window_callback_inner(
             }
 
             state.set_window_flags_in_place(|f| f.remove(WindowFlags::MARKER_IN_SIZE_MOVE));
+            result = ProcResult::Value(0);
+        },
+
+        // Over the maximize region of an extended title bar the application draws the button, so
+        // the press is passed on as client input (see `WM_NCMOUSEMOVE`).
+        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK
+            if wparam == HTMAXBUTTON as WPARAM && extends_into_title_bar(userdata) =>
+        {
+            use crate::event::ElementState::Pressed;
+            use crate::event::MouseButton::Left;
+            use crate::event::WindowEvent::MouseInput;
+
+            // The capture turns the following moves and the release into client messages.
+            // Skipping `DefWindowProc` keeps it from tracking, and drawing, a system button.
+            unsafe { capture_mouse(window, &mut userdata.window_state_lock()) };
+            update_modifiers(window, userdata);
+            userdata.send_event(Event::WindowEvent {
+                window_id: RootWindowId(WindowId(window)),
+                event: MouseInput { device_id: DEVICE_ID, state: Pressed, button: Left },
+            });
             result = ProcResult::Value(0);
         },
 
@@ -1723,86 +1746,56 @@ unsafe fn public_window_callback_inner(
         },
 
         WM_MOUSEMOVE => {
-            use crate::event::WindowEvent::{CursorEntered, CursorLeft, CursorMoved};
-
             let x = super::get_x_lparam(lparam as u32) as i32;
             let y = super::get_y_lparam(lparam as u32) as i32;
-            let position = PhysicalPosition::new(x as f64, y as f64);
-
-            let cursor_moved;
-            {
-                let mut w = userdata.window_state_lock();
-                let mouse_was_inside_window =
-                    w.mouse.cursor_flags().contains(CursorFlags::IN_WINDOW);
-
-                match get_pointer_move_kind(window, mouse_was_inside_window, x, y) {
-                    PointerMoveKind::Enter => {
-                        w.mouse
-                            .set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, true))
-                            .ok();
-
-                        drop(w);
-                        userdata.send_event(Event::WindowEvent {
-                            window_id: RootWindowId(WindowId(window)),
-                            event: CursorEntered { device_id: DEVICE_ID },
-                        });
-
-                        // Calling TrackMouseEvent in order to receive mouse leave events.
-                        unsafe {
-                            TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                                cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                                dwFlags: TME_LEAVE,
-                                hwndTrack: window,
-                                dwHoverTime: HOVER_DEFAULT,
-                            })
-                        };
-                    },
-                    PointerMoveKind::Leave => {
-                        w.mouse
-                            .set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, false))
-                            .ok();
-
-                        drop(w);
-                        userdata.send_event(Event::WindowEvent {
-                            window_id: RootWindowId(WindowId(window)),
-                            event: CursorLeft { device_id: DEVICE_ID },
-                        });
-                    },
-                    PointerMoveKind::None => drop(w),
-                }
-
-                // handle spurious WM_MOUSEMOVE messages
-                // see https://devblogs.microsoft.com/oldnewthing/20031001-00/?p=42343
-                // and http://debugandconquer.blogspot.com/2015/08/the-cause-of-spurious-mouse-move.html
-                let mut w = userdata.window_state_lock();
-                cursor_moved = w.mouse.last_position != Some(position);
-                w.mouse.last_position = Some(position);
-            }
-
-            if cursor_moved {
-                update_modifiers(window, userdata);
-
-                userdata.send_event(Event::WindowEvent {
-                    window_id: RootWindowId(WindowId(window)),
-                    event: CursorMoved { device_id: DEVICE_ID, position },
-                });
-            }
-
+            unsafe { pointer_moved(window, userdata, x, y, false) };
             result = ProcResult::Value(0);
         },
 
-        WM_MOUSELEAVE => {
-            use crate::event::WindowEvent::CursorLeft;
-            {
-                let mut w = userdata.window_state_lock();
-                w.mouse.set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, false)).ok();
+        // Over the maximize region of an extended title bar, mouse input arrives as non-client
+        // messages; pass it on as client input so that the application's button works.
+        WM_NCMOUSEMOVE if wparam == HTMAXBUTTON as WPARAM && extends_into_title_bar(userdata) => {
+            let mut point = POINT {
+                x: super::get_x_lparam(lparam as u32) as i32,
+                y: super::get_y_lparam(lparam as u32) as i32,
+            };
+            if unsafe { ScreenToClient(window, &mut point) } != 0 {
+                unsafe { pointer_moved(window, userdata, point.x, point.y, true) };
             }
+            result = ProcResult::DefWindowProc(wparam);
+        },
 
+        WM_NCLBUTTONUP if wparam == HTMAXBUTTON as WPARAM && extends_into_title_bar(userdata) => {
+            use crate::event::ElementState::Released;
+            use crate::event::MouseButton::Left;
+            use crate::event::WindowEvent::MouseInput;
+
+            unsafe { release_mouse(userdata.window_state_lock()) };
+            update_modifiers(window, userdata);
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: CursorLeft { device_id: DEVICE_ID },
+                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
             });
+            result = ProcResult::Value(0);
+        },
 
+        WM_NCMOUSELEAVE => {
+            // Only the tracking armed over the maximize region is ours; `DefWindowProc` arms its
+            // own for the rest of the non-client area. Moving back into the client area is not a
+            // leave: the next `WM_MOUSEMOVE` re-arms client tracking.
+            let ours = mem::take(&mut userdata.window_state_lock().title_bar_maximize_hover);
+            if ours && unsafe { hit_under_cursor(window) } != Some(HTCLIENT as isize) {
+                unsafe { pointer_left(window, userdata) };
+            }
+            result = ProcResult::DefWindowProc(wparam);
+        },
+
+        WM_MOUSELEAVE => {
+            // Moving onto the maximize region ends client tracking, but the cursor stays in the
+            // window: the next `WM_NCMOUSEMOVE` arms non-client tracking instead.
+            if unsafe { hit_under_cursor(window) } != Some(HTMAXBUTTON as isize) {
+                unsafe { pointer_left(window, userdata) };
+            }
             result = ProcResult::Value(0);
         },
 
@@ -2729,6 +2722,110 @@ enum PointerMoveKind {
     Leave,
     /// Pointer is inside the window or `GetClientRect` failed.
     None,
+}
+
+fn extends_into_title_bar(userdata: &WindowData) -> bool {
+    userdata.window_state_lock().window_flags.extends_into_title_bar()
+}
+
+/// Arms `WM_MOUSELEAVE`, or `WM_NCMOUSELEAVE` for the maximize region of the title bar.
+unsafe fn track_mouse_leave(window: HWND, nonclient: bool) {
+    let flags = if nonclient { TME_LEAVE | TME_NONCLIENT } else { TME_LEAVE };
+    unsafe {
+        TrackMouseEvent(&mut TRACKMOUSEEVENT {
+            cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: flags,
+            hwndTrack: window,
+            dwHoverTime: HOVER_DEFAULT,
+        })
+    };
+}
+
+/// Hit-test code of this window under the cursor, or `None` when another window is there.
+unsafe fn hit_under_cursor(window: HWND) -> Option<isize> {
+    let mut point = POINT { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut point) } == 0 || unsafe { WindowFromPoint(point) } != window {
+        return None;
+    }
+    let lparam = ((point.y as u16 as u32) << 16 | point.x as u16 as u32) as LPARAM;
+    Some(unsafe { SendMessageW(window, WM_NCHITTEST, 0, lparam) })
+}
+
+/// Sends the cursor events for a move to the client point `(x, y)`. `over_maximize` is whether
+/// it arrived as `WM_NCMOUSEMOVE` over the maximize region of the title bar.
+unsafe fn pointer_moved(window: HWND, userdata: &WindowData, x: i32, y: i32, over_maximize: bool) {
+    use crate::event::WindowEvent::{CursorEntered, CursorLeft, CursorMoved};
+
+    let position = PhysicalPosition::new(x as f64, y as f64);
+
+    let cursor_moved;
+    {
+        let mut w = userdata.window_state_lock();
+        let mouse_was_inside_window = w.mouse.cursor_flags().contains(CursorFlags::IN_WINDOW);
+        // Leave tracking is either client or non-client, so crossing between the client area
+        // and the maximize region re-arms it.
+        let retrack = mouse_was_inside_window && w.title_bar_maximize_hover != over_maximize;
+        w.title_bar_maximize_hover = over_maximize;
+
+        match get_pointer_move_kind(window, mouse_was_inside_window, x, y) {
+            PointerMoveKind::Enter => {
+                w.mouse.set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, true)).ok();
+
+                drop(w);
+                userdata.send_event(Event::WindowEvent {
+                    window_id: RootWindowId(WindowId(window)),
+                    event: CursorEntered { device_id: DEVICE_ID },
+                });
+
+                // Calling TrackMouseEvent in order to receive mouse leave events.
+                unsafe { track_mouse_leave(window, over_maximize) };
+            },
+            PointerMoveKind::Leave => {
+                w.mouse.set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, false)).ok();
+
+                drop(w);
+                userdata.send_event(Event::WindowEvent {
+                    window_id: RootWindowId(WindowId(window)),
+                    event: CursorLeft { device_id: DEVICE_ID },
+                });
+            },
+            PointerMoveKind::None => {
+                drop(w);
+                if retrack {
+                    unsafe { track_mouse_leave(window, over_maximize) };
+                }
+            },
+        }
+
+        // handle spurious WM_MOUSEMOVE messages
+        // see https://devblogs.microsoft.com/oldnewthing/20031001-00/?p=42343
+        // and http://debugandconquer.blogspot.com/2015/08/the-cause-of-spurious-mouse-move.html
+        let mut w = userdata.window_state_lock();
+        cursor_moved = w.mouse.last_position != Some(position);
+        w.mouse.last_position = Some(position);
+    }
+
+    if cursor_moved {
+        update_modifiers(window, userdata);
+
+        userdata.send_event(Event::WindowEvent {
+            window_id: RootWindowId(WindowId(window)),
+            event: CursorMoved { device_id: DEVICE_ID, position },
+        });
+    }
+}
+
+unsafe fn pointer_left(window: HWND, userdata: &WindowData) {
+    use crate::event::WindowEvent::CursorLeft;
+    {
+        let mut w = userdata.window_state_lock();
+        w.mouse.set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, false)).ok();
+    }
+
+    userdata.send_event(Event::WindowEvent {
+        window_id: RootWindowId(WindowId(window)),
+        event: CursorLeft { device_id: DEVICE_ID },
+    });
 }
 
 fn get_pointer_move_kind(

@@ -59,6 +59,13 @@ pub(crate) struct WindowState {
 
     /// Caption regions in client coordinates, see `WindowExtWindows::set_title_bar_caption`.
     pub title_bar_caption: Vec<RECT>,
+
+    /// Maximize region in client coordinates, see `WindowExtWindows::set_title_bar_maximize`.
+    pub title_bar_maximize: Option<RECT>,
+
+    /// Whether the cursor is over the maximize region, where mouse input arrives as `WM_NC*`
+    /// messages and leave tracking is non-client.
+    pub title_bar_maximize_hover: bool,
 }
 
 #[derive(Clone)]
@@ -185,6 +192,8 @@ impl WindowState {
             skip_taskbar: false,
 
             title_bar_caption: Vec::new(),
+            title_bar_maximize: None,
+            title_bar_maximize_hover: false,
         }
     }
 

@@ -1,7 +1,9 @@
 //! Pure geometry for windows that extend their content into the title bar.
 
 use windows_sys::Win32::Foundation::RECT;
-use windows_sys::Win32::UI::WindowsAndMessaging::{HTTOP, HTTOPLEFT, HTTOPRIGHT};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    HTCAPTION, HTMAXBUTTON, HTTOP, HTTOPLEFT, HTTOPRIGHT,
+};
 
 use crate::dpi::{PhysicalPosition, PhysicalSize};
 
@@ -47,6 +49,23 @@ pub(super) fn rect(origin: PhysicalPosition<i32>, size: PhysicalSize<u32>) -> RE
 /// Whether the client point lies in one of the regions; right and bottom edges are exclusive.
 pub(super) fn contains(regions: &[RECT], x: i32, y: i32) -> bool {
     regions.iter().any(|r| (r.left..r.right).contains(&x) && (r.top..r.bottom).contains(&y))
+}
+
+/// Hit-test code for a client point inside a title bar region: `HTMAXBUTTON` over the maximize
+/// region, which wins where it overlaps a caption region, then `HTCAPTION`.
+pub(super) fn region_hit(
+    caption: &[RECT],
+    maximize: Option<RECT>,
+    x: i32,
+    y: i32,
+) -> Option<isize> {
+    if maximize.is_some_and(|r| contains(&[r], x, y)) {
+        Some(HTMAXBUTTON as isize)
+    } else if contains(caption, x, y) {
+        Some(HTCAPTION as isize)
+    } else {
+        None
+    }
 }
 
 /// Keeps the top edge of the requested client rect, discarding the caption margin that
@@ -129,6 +148,21 @@ mod tests {
         assert!(!contains(&regions, 39, 10));
         assert!(contains(&regions, 550, 5));
         assert!(!contains(&[], 0, 0));
+    }
+
+    #[test]
+    fn region_hit_prefers_maximize_over_caption() {
+        let caption = [rect(PhysicalPosition::new(0, 0), PhysicalSize::new(600, 32))];
+        let maximize = Some(rect(PhysicalPosition::new(500, 0), PhysicalSize::new(46, 32)));
+        let (max, cap) = (HTMAXBUTTON as isize, HTCAPTION as isize);
+        assert_eq!(region_hit(&caption, maximize, 500, 0), Some(max));
+        assert_eq!(region_hit(&caption, maximize, 545, 31), Some(max));
+        assert_eq!(region_hit(&caption, maximize, 546, 10), Some(cap));
+        assert_eq!(region_hit(&caption, maximize, 499, 10), Some(cap));
+        assert_eq!(region_hit(&caption, maximize, 500, 32), None);
+        assert_eq!(region_hit(&caption, None, 520, 10), Some(cap));
+        assert_eq!(region_hit(&[], maximize, 520, 10), Some(max));
+        assert_eq!(region_hit(&[], None, 520, 10), None);
     }
 
     #[test]

@@ -311,6 +311,20 @@ pub trait WindowExtWindows {
     /// Has no effect on windows without the extended title bar.
     fn set_title_bar_caption(&self, regions: &[(PhysicalPosition<i32>, PhysicalSize<u32>)]);
 
+    /// Sets the maximize region of a window created with
+    /// [`with_extend_content_into_title_bar`](WindowAttributesExtWindows::with_extend_content_into_title_bar),
+    /// the rectangle of the application's own maximize button in physical client coordinates.
+    ///
+    /// Inside it the window answers `WM_NCHITTEST` with `HTMAXBUTTON`, so hovering it shows the
+    /// Windows 11 Snap Layouts flyout. Its mouse input still reaches the application: moves,
+    /// left presses and releases arrive as the usual cursor and mouse button events, so the
+    /// application draws the button and toggles maximization itself. It wins over a caption
+    /// region it overlaps.
+    ///
+    /// `None` removes it. Like caption regions it is not scaled on DPI changes. Has no effect on
+    /// windows without the extended title bar.
+    fn set_title_bar_maximize(&self, region: Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>);
+
     /// Sets the preferred style of the window corners.
     ///
     /// Supported starting with Windows 11 Build 22000.
@@ -418,6 +432,11 @@ impl WindowExtWindows for Window {
     #[inline]
     fn set_title_bar_caption(&self, regions: &[(PhysicalPosition<i32>, PhysicalSize<u32>)]) {
         self.window.set_title_bar_caption(regions)
+    }
+
+    #[inline]
+    fn set_title_bar_maximize(&self, region: Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>) {
+        self.window.set_title_bar_maximize(region)
     }
 
     #[inline]
