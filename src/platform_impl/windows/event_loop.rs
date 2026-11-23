@@ -1781,21 +1781,24 @@ unsafe fn public_window_callback_inner(
 
         WM_NCMOUSELEAVE => {
             // Only the tracking armed over the maximize region is ours; `DefWindowProc` arms its
-            // own for the rest of the non-client area. Moving back into the client area is not a
-            // leave: the next `WM_MOUSEMOVE` re-arms client tracking.
-            let ours = mem::take(&mut userdata.window_state_lock().title_bar_maximize_hover);
-            if ours && unsafe { hit_under_cursor(window) } != Some(HTCLIENT as isize) {
-                unsafe { pointer_left(window, userdata) };
+            // own for the rest of the non-client area.
+            let ours = {
+                let mut w = userdata.window_state_lock();
+                let ours = w.leave_tracking == Some(true);
+                if ours {
+                    w.leave_tracking = None;
+                }
+                ours
+            };
+            if ours {
+                unsafe { pointer_left_unless_inside(window, userdata) };
             }
             result = ProcResult::DefWindowProc(wparam);
         },
 
         WM_MOUSELEAVE => {
-            // Moving onto the maximize region ends client tracking, but the cursor stays in the
-            // window: the next `WM_NCMOUSEMOVE` arms non-client tracking instead.
-            if unsafe { hit_under_cursor(window) } != Some(HTMAXBUTTON as isize) {
-                unsafe { pointer_left(window, userdata) };
-            }
+            userdata.window_state_lock().leave_tracking = None;
+            unsafe { pointer_left_unless_inside(window, userdata) };
             result = ProcResult::Value(0);
         },
 
@@ -2762,12 +2765,26 @@ unsafe fn pointer_moved(window: HWND, userdata: &WindowData, x: i32, y: i32, ove
     {
         let mut w = userdata.window_state_lock();
         let mouse_was_inside_window = w.mouse.cursor_flags().contains(CursorFlags::IN_WINDOW);
-        // Leave tracking is either client or non-client, so crossing between the client area
-        // and the maximize region re-arms it.
-        let retrack = mouse_was_inside_window && w.title_bar_maximize_hover != over_maximize;
-        w.title_bar_maximize_hover = over_maximize;
+        let kind = get_pointer_move_kind(window, mouse_was_inside_window, x, y);
 
-        match get_pointer_move_kind(window, mouse_was_inside_window, x, y) {
+        // Leave tracking is either client or non-client, and every leave message ends it. Arm the
+        // kind this move needs on entering, and again once it ended or the cursor crossed between
+        // the client area and the maximize region of the title bar.
+        let want = Some(over_maximize);
+        let retrack = match kind {
+            PointerMoveKind::Enter => true,
+            PointerMoveKind::Leave => false,
+            PointerMoveKind::None => mouse_was_inside_window && w.leave_tracking != want,
+        };
+        w.leave_tracking = if retrack {
+            want
+        } else if matches!(kind, PointerMoveKind::Leave) {
+            None
+        } else {
+            w.leave_tracking
+        };
+
+        match kind {
             PointerMoveKind::Enter => {
                 w.mouse.set_cursor_flags(window, |f| f.set(CursorFlags::IN_WINDOW, true)).ok();
 
@@ -2812,6 +2829,19 @@ unsafe fn pointer_moved(window: HWND, userdata: &WindowData, x: i32, y: i32, ove
             window_id: RootWindowId(WindowId(window)),
             event: CursorMoved { device_id: DEVICE_ID, position },
         });
+    }
+}
+
+/// Handles the end of leave tracking. In a window that extends into the title bar, tracking also
+/// ends while the cursor stays over the window: on crossing between the client area and the
+/// maximize region, when the mouse is captured, or when Snap Layouts shows. The cursor has not
+/// left then, and the next move arms tracking again.
+unsafe fn pointer_left_unless_inside(window: HWND, userdata: &WindowData) {
+    let inside = extends_into_title_bar(userdata)
+        && unsafe { hit_under_cursor(window) }
+            .is_some_and(|hit| hit == HTCLIENT as isize || hit == HTMAXBUTTON as isize);
+    if !inside {
+        unsafe { pointer_left(window, userdata) };
     }
 }
 
