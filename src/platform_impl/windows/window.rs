@@ -40,9 +40,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     FLASHW_TRAY, GWLP_HINSTANCE, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT,
     HTTOP, HTTOPLEFT, HTTOPRIGHT, MENU_ITEM_STATE, MFS_DISABLED, MFS_ENABLED, MF_BYCOMMAND,
     NID_READY, PM_NOREMOVE, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_MOVE, SC_RESTORE, SC_SIZE,
-    SIZE_MAXIMIZED, SIZE_RESTORED, SM_DIGITIZER, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE,
-    SWP_NOZORDER, TPM_LEFTALIGN, TPM_RETURNCMD, WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WM_NCLBUTTONDOWN,
-    WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
+    SIZE_MAXIMIZED, SIZE_MINIMIZED, SIZE_RESTORED, SM_DIGITIZER, SWP_ASYNCWINDOWPOS,
+    SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, TPM_LEFTALIGN, TPM_RETURNCMD, WDA_EXCLUDEFROMCAPTURE,
+    WDA_NONE, WM_NCLBUTTONDOWN, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
 };
 
 use tracing::warn;
@@ -744,7 +744,9 @@ impl Window {
 
             // The style change and the taskbar mark below resize the window to the old outer
             // rectangle on the way; only the final bounds may reach the app as `Resized` (#111).
-            window_state.lock().unwrap().suppress_resized = true;
+            // Restored rather than cleared below, in case a handler re-enters `set_fullscreen`.
+            let was_suppressed =
+                mem::replace(&mut window_state.lock().unwrap().suppress_resized, true);
 
             // Update window style
             WindowState::set_window_flags(window_state.lock().unwrap(), window.hwnd(), |f| {
@@ -767,7 +769,7 @@ impl Window {
                 taskbar_mark_fullscreen(window.hwnd(), fullscreen.is_some());
             }
 
-            window_state.lock().unwrap().suppress_resized = false;
+            window_state.lock().unwrap().suppress_resized = was_suppressed;
 
             // Update window bounds
             match &fullscreen {
@@ -822,7 +824,9 @@ impl Window {
                 unsafe {
                     let mut rect: RECT = mem::zeroed();
                     GetClientRect(window.hwnd(), &mut rect);
-                    let kind = if util::is_maximized(window.hwnd()) {
+                    let kind = if util::is_minimized(window.hwnd()) {
+                        SIZE_MINIMIZED
+                    } else if util::is_maximized(window.hwnd()) {
                         SIZE_MAXIMIZED
                     } else {
                         SIZE_RESTORED

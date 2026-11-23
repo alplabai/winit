@@ -49,4 +49,4 @@ changelog entry.
 ### Fixed
 
 - On macOS, emit `WindowEvent::Occluded` with the current occlusion state when a fullscreen exit finishes, so `Window::fullscreen()` can be re-read after the state changes.
-- On Windows, entering or leaving fullscreen emits one `WindowEvent::Resized` with the final size. The style change used to report the old outer size as an intermediate client size first, so applications drew a frame at that size.
+- On Windows, entering or leaving borderless fullscreen emits one `WindowEvent::Resized` with the final size. The style change used to report the old outer size as an intermediate client size first, so applications drew a frame at that size.
