@@ -1771,16 +1771,17 @@ unsafe fn public_window_callback_inner(
             use crate::event::WindowEvent::MouseInput;
 
             // A press on the region captures the mouse, so the release normally arrives as
-            // `WM_LBUTTONUP`; without a capture there was no press to pair this release with.
+            // `WM_LBUTTONUP`. It arrives here when the system took the capture back in between
+            // (seen on a maximized window), and the press still needs its release.
             let captured = userdata.window_state_lock().mouse.capture_count > 0;
             if captured {
                 unsafe { release_mouse(userdata.window_state_lock()) };
-                update_modifiers(window, userdata);
-                userdata.send_event(Event::WindowEvent {
-                    window_id: RootWindowId(WindowId(window)),
-                    event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
-                });
             }
+            update_modifiers(window, userdata);
+            userdata.send_event(Event::WindowEvent {
+                window_id: RootWindowId(WindowId(window)),
+                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
+            });
             result = ProcResult::Value(0);
         },
 
