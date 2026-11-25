@@ -53,3 +53,4 @@ changelog entry.
 - On Wayland, the end of an interactive resize no longer emits a second `WindowEvent::Resized` with the unchanged size. The compositor clearing the `resizing` state was treated as a resize.
 - On X11, `Window::show_window_menu` opens the window manager's window menu by sending `_GTK_SHOW_WINDOW_MENU`, as GTK does; it used to do nothing.
 - On X11, mouse scroll button events no longer cause duplicated `WindowEvent::MouseWheel` events.
+- On Wayland, an empty `Ime::Preedit` is no longer sent again when the last preedit was already empty, and IME events are no longer delivered to a window whose IME is disabled.
