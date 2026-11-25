@@ -56,3 +56,4 @@ changelog entry.
 - On Wayland, an empty `Ime::Preedit` is no longer sent again when the last preedit was already empty, and IME events are no longer delivered to a window whose IME is disabled.
 - On X11, `Window::set_ime_cursor_area` reports the bottom-right corner of the area as the IME position, so the candidate window no longer covers the text being typed.
 - On Wayland, `Window::drag_window`, `Window::drag_resize_window` and `Window::show_window_menu` work while a finger is down on the window: they use the serial of the touch down instead of only the last pointer button serial.
+- On X11, implement smooth resizing through the sync extension API: the window advertises `_NET_WM_SYNC_REQUEST` and a sync counter.
