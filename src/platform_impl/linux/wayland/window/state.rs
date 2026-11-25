@@ -382,7 +382,13 @@ impl WindowState {
             .map(|old_state| {
                 !old_state
                     .symmetric_difference(new_state)
-                    .difference(XdgWindowState::ACTIVATED | XdgWindowState::SUSPENDED)
+                    // `RESIZING` changes nothing either: the drag that ends with it
+                    // already reported its last size.
+                    .difference(
+                        XdgWindowState::ACTIVATED
+                            | XdgWindowState::SUSPENDED
+                            | XdgWindowState::RESIZING,
+                    )
                     .is_empty()
             })
             // NOTE: `None` is present for the initial configure, thus we must always resize.

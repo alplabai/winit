@@ -1662,8 +1662,42 @@ impl UnownedWindow {
         self.drag_initiate(util::MOVERESIZE_MOVE)
     }
 
-    #[inline]
-    pub fn show_window_menu(&self, _position: Position) {}
+    /// Asks the window manager for its window menu at `position`, the way GTK does:
+    /// `_GTK_SHOW_WINDOW_MENU`, handled by KWin and Mutter among others.
+    pub fn show_window_menu(&self, position: Position) {
+        let Ok(window) = self.inner_position() else {
+            return;
+        };
+        let position: PhysicalPosition<i32> = position.to_physical(self.scale_factor());
+
+        // The window manager grabs the pointer for the menu, so release the implicit grab
+        // of the button press first, as `drag_initiate` does.
+        let mut grabbed_lock = self.cursor_grabbed_mode.lock().unwrap();
+        if let Ok(cookie) = self.xconn.xcb_connection().ungrab_pointer(x11rb::CURRENT_TIME) {
+            cookie.ignore_error();
+        }
+        *grabbed_lock = CursorGrabMode::None;
+
+        let atoms = self.xconn.atoms();
+        let sent = self.xconn.send_client_msg(
+            self.xwindow,
+            self.root,
+            atoms[_GTK_SHOW_WINDOW_MENU],
+            Some(xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY),
+            [
+                u32::from(util::VIRTUAL_CORE_POINTER),
+                (window.x + position.x) as u32,
+                (window.y + position.y) as u32,
+                0,
+                0,
+            ],
+        );
+
+        if let Err(err) = sent.map(|cookie| cookie.ignore_error()) {
+            warn!("Failed to request the window menu: {err}");
+        }
+        let _ = self.xconn.flush_requests();
+    }
 
     /// Resizes the window while it is being dragged.
     pub fn drag_resize_window(&self, direction: ResizeDirection) -> Result<(), ExternalError> {
