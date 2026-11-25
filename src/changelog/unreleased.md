@@ -54,3 +54,4 @@ changelog entry.
 - On X11, `Window::show_window_menu` opens the window manager's window menu by sending `_GTK_SHOW_WINDOW_MENU`, as GTK does; it used to do nothing.
 - On X11, mouse scroll button events no longer cause duplicated `WindowEvent::MouseWheel` events.
 - On Wayland, an empty `Ime::Preedit` is no longer sent again when the last preedit was already empty, and IME events are no longer delivered to a window whose IME is disabled.
+- On X11, `Window::set_ime_cursor_area` reports the bottom-right corner of the area as the IME position, so the candidate window no longer covers the text being typed.
